@@ -1,150 +1,114 @@
-// socks.go
 package main
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
+	"io"
 	"net"
 )
 
-/*
-
- */
-func client_greeting(conn net.Conn) (byte, []byte, error) {
+// HandleHandshake gestisce la negoziazione iniziale (versione e auth)
+func HandleHandshake(conn net.Conn) error {
+	// Leggiamo header: Versione + Num Methods
 	buf := make([]byte, 2)
-
-	if nRead, err := conn.Read(buf); err != nil || nRead != len(buf) {
-		return 0, nil, errors.New("[WARN] client greeting failed")
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		return fmt.Errorf("handshake read error: %v", err)
 	}
 
-	socks_version := buf[0]
-	num_auth_methods := buf[1]
-
-	auth_methods := make([]byte, num_auth_methods)
-
-	if nRead, err := conn.Read(auth_methods); err != nil || nRead != int(num_auth_methods) {
-		return 0, nil, errors.New("[WARN] client greeting failed")
+	if buf[0] != SocksVersion5 {
+		return errors.New("unsupported SOCKS version")
 	}
 
-	return socks_version, auth_methods, nil
-}
-
-/*
-
- */
-func servers_choice(conn net.Conn) error {
-
-	if nWrite, err := conn.Write([]byte{5, 0}); err != nil || nWrite != 2 {
-		return errors.New("[WARN] servers choice failed")
+	numMethods := int(buf[1])
+	methods := make([]byte, numMethods)
+	if _, err := io.ReadFull(conn, methods); err != nil {
+		return fmt.Errorf("reading auth methods error: %v", err)
 	}
+
+	// Per ora supportiamo solo NO AUTH. 
+	// In futuro qui si potrebbe ciclare su 'methods' per cercare auth specifici.
+	
+	// Rispondiamo che accettiamo NO AUTH (0x00)
+	if _, err := conn.Write([]byte{SocksVersion5, AuthNoAuth}); err != nil {
+		return fmt.Errorf("handshake write error: %v", err)
+	}
+
 	return nil
 }
 
-/*
-
- */
-func client_conection_request(conn net.Conn) (string, error) {
+// ReadRequest legge la richiesta di connessione (CMD, ADDR, PORT)
+func ReadRequest(conn net.Conn) (string, error) {
 	header := make([]byte, 4)
-	port := make([]byte, 2)
-	var address string
-
-	if nRead, err := conn.Read(header); err != nil || nRead != len(header) {
-		conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-		conn.Close()
-		return "", errors.New("[WARN] client connection request failed")
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return "", fmt.Errorf("request header read error: %v", err)
 	}
 
-	socks_version := header[0]
-	cmd_code := header[1]
-	//	reserved := header[2]
-	address_type := header[3]
+	ver, cmd, _, addrType := header[0], header[1], header[2], header[3]
 
-	if socks_version != 5 {
-		conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-		conn.Close()
-		return "", errors.New("[WARN] unsupported SOCKS version")
+	if ver != SocksVersion5 {
+		return "", errors.New("unsupported SOCKS version")
 	}
 
-	if cmd_code != CONNECT {
-		conn.Write([]byte{5, COMMAND_NOT_SUPPORTED, 0, 1, 0, 0, 0, 0, 0, 0})
-		conn.Close()
-		return "", errors.New("[WARN] unsupported command code")
+	if cmd != CmdConnect {
+		ReplyError(conn, StatusCommandNotSupported)
+		return "", fmt.Errorf("unsupported command: %d", cmd)
 	}
 
-	switch address_type {
-	case IPV4:
-		ipv4_address := make([]byte, 4)
+	var destAddr string
+	var portBytes = make([]byte, 2)
 
-		if nRead, err := conn.Read(ipv4_address); err != nil || nRead != len(ipv4_address) {
-			conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-			conn.Close()
-			return "", errors.New("[WARN] client connection request failed")
+	switch addrType {
+	case AddrTypeIPv4:
+		ipv4 := make([]byte, 4)
+		if _, err := io.ReadFull(conn, ipv4); err != nil {
+			return "", err
 		}
-
-		if nRead, err := conn.Read(port); err != nil || nRead != len(port) {
-			conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-			conn.Close()
-			return "", errors.New("[WARN] client connection request failed")
+		if _, err := io.ReadFull(conn, portBytes); err != nil {
+			return "", err
 		}
-		address = fmt.Sprintf("%d.%d.%d.%d:%d", ipv4_address[0],
-			ipv4_address[1],
-			ipv4_address[2],
-			ipv4_address[3],
-			binary.BigEndian.Uint16(port))
+		destAddr = fmt.Sprintf("%s:%d", net.IP(ipv4).String(), binary.BigEndian.Uint16(portBytes))
 
-	case DOMAIN:
-		domain_name_length := make([]byte, 1)
-
-		if nRead, err := conn.Read(domain_name_length); err != nil || nRead != len(domain_name_length) {
-			conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-			conn.Close()
-			return "", errors.New("[WARN] client connection request failed")
+	case AddrTypeDomain:
+		lenByte := make([]byte, 1)
+		if _, err := io.ReadFull(conn, lenByte); err != nil {
+			return "", err
 		}
-
-		domain_name := make([]byte, domain_name_length[0])
-
-		if nRead, err := conn.Read(domain_name); err != nil || nRead != len(domain_name) {
-			conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-			conn.Close()
-			return "", errors.New("[WARN] client connection request failed")
+		domain := make([]byte, int(lenByte[0]))
+		if _, err := io.ReadFull(conn, domain); err != nil {
+			return "", err
 		}
-
-		if nRead, err := conn.Read(port); err != nil || nRead != len(port) {
-			conn.Write([]byte{5, SERVER_FAILURE, 0, 1, 0, 0, 0, 0, 0, 0})
-			conn.Close()
-			return "", errors.New("[WARN] client connection request failed")
+		if _, err := io.ReadFull(conn, portBytes); err != nil {
+			return "", err
 		}
-		address = fmt.Sprintf("%s:%d", string(domain_name), binary.BigEndian.Uint16(port))
+		destAddr = fmt.Sprintf("%s:%d", string(domain), binary.BigEndian.Uint16(portBytes))
+
+	case AddrTypeIPv6:
+		ipv6 := make([]byte, 16)
+		if _, err := io.ReadFull(conn, ipv6); err != nil {
+			return "", err
+		}
+		if _, err := io.ReadFull(conn, portBytes); err != nil {
+			return "", err
+		}
+		destAddr = fmt.Sprintf("[%s]:%d", net.IP(ipv6).String(), binary.BigEndian.Uint16(portBytes))
 
 	default:
-		conn.Write([]byte{5, ADDRTYPE_NOT_SUPPORTED, 0, 1, 0, 0, 0, 0, 0, 0})
-		conn.Close()
-		return "", errors.New("[WARN] unsupported address type")
+		ReplyError(conn, StatusAddrTypeNotSupported)
+		return "", errors.New("address type not supported")
 	}
-	return address, nil
+
+	return destAddr, nil
 }
 
-/*
+// ReplyError invia un messaggio di errore al client
+func ReplyError(conn net.Conn, status byte) {
+	// Risposta standard di errore: Ver 5, Status, Rsv 0, Type IPv4, 0.0.0.0, Port 0
+	conn.Write([]byte{SocksVersion5, status, 0x00, AddrTypeIPv4, 0, 0, 0, 0, 0, 0})
+}
 
- */
-func handle_socks_connection(conn net.Conn) (string, error) {
-
-	if _, _, err := client_greeting(conn); err != nil {
-		log.Println(err)
-		return "", err
-	}
-
-	if err := servers_choice(conn); err != nil {
-		log.Println(err)
-		return "", err
-	}
-
-	address, err := client_conection_request(conn)
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
-	return address, nil
+// ReplySuccess invia conferma di connessione avvenuta
+func ReplySuccess(conn net.Conn) {
+	// Rispondiamo con successo bindando su 0.0.0.0:0 (dummy)
+	conn.Write([]byte{SocksVersion5, StatusSuccess, 0x00, AddrTypeIPv4, 0, 0, 0, 0, 0, 0})
 }

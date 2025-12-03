@@ -1,4 +1,44 @@
 # Go dispatch proxy
+A fork of https://github.com/extremecoders-re/go-dispatch-proxy
+
+🚀 Major Code Refactoring and Robustness Improvements
+This fork introduces a significant refactoring of the codebase, transitioning from a C-style Go implementation to a more Idiomatic and Robust Go structure. The primary goals were to enhance thread safety, network reliability, testability, and adherence to modern Go conventions.
+
+🌟 Key Changes and Improvements
+1. Architectural and State Management (Thread Safety)
+The original code relied heavily on global state, making concurrent access brittle and difficult to test.
+
+Elimination of Global State: Removed global variables (lb_list, lb_index, mutex) from main.go.
+
+Encapsulated Dispatcher: Introduced the Dispatcher struct (balancer.go). This structure encapsulates the load balancer list and the selection logic, protecting access via an internal sync.Mutex. This ensures thread-safe load balancing in a high-concurrency environment.
+
+New File: Added balancer.go to handle all load balancing logic, cleanly separating it from the main server setup.
+
+2. SOCKS5 Protocol Handling (Robustness)
+Network applications must be resilient to partial reads and unexpected client behavior.
+
+Guaranteed Reads (io.ReadFull): The logic in socks.go was vulnerable to partial TCP reads (conn.Read). This has been replaced with io.ReadFull in all critical sections (handshake, request parsing) to guarantee that the expected number of bytes are read, significantly improving protocol compliance and preventing subtle network bugs.
+
+Improved Error Handling: Added robust error responses to the client (using ReplyError) upon request failure.
+
+IPv6 Support: Added basic parsing logic for SOCKS5 IPv6 address types (AddrTypeIPv6) in socks.go.
+
+3. Concurrency and Resource Management
+Connection Deadlines (Timeouts): Introduced explicit 10-second Dial Timeout in DialBackend (dialer_*.go). This prevents goroutine blocking and resource exhaustion if a backend server is slow or unreachable.
+
+Clean Pipe Management: The PipeConnections function in main.go was updated to use a clean synchronization channel (done) and CloseWrite where possible, ensuring that both connection sides are properly signaled before final closure, minimizing connection leaks.
+
+4. Code Style and Conventions
+The code now adheres to standard Go idioms:
+
+Naming Conventions: All identifiers have been converted from snake_case (e.g., server_response, load_balancer) to CamelCase (e.g., ServerResponse, LoadBalancer).
+
+Modern Build Tags: Updated build tags in the dialer files from the deprecated // +build format to the modern //go:build format.
+
+5. File Renaming for Clarity
+
+
+
 
 A SOCKS5 load balancing proxy to combine multiple internet connections into one. Works on Windows and Linux. [Reported to work on macOS](https://github.com/extremecoders-re/go-dispatch-proxy/issues/1). Written in pure Go with no additional dependencies.
 
@@ -140,9 +180,3 @@ $ GOOS=darwin GOARCH=amd64 go build
 - [dispatch-proxy](https://github.com/Morhaus/dispatch-proxy): A SOCKS5/HTTP load balancing proxy written in NodeJS.
 
 ## License
-
-Licensed under MIT
-
-## Community
-
-- **Go Dispatch Proxy GUI**: A simple gui for go-dispatch-proxy (https://github.com/gulp79/go-dispatch-proxy-gui)
