@@ -37,7 +37,7 @@ Modern Build Tags: Updated build tags in the dialer files from the deprecated //
 
 5. File Renaming for Clarity
 
-
+A GUI for this proxy is here: https://github.com/gulp79/go-dispatch-proxy-gui
 
 
 A SOCKS5 load balancing proxy to combine multiple internet connections into one. Works on Windows and Linux. [Reported to work on macOS](https://github.com/extremecoders-re/go-dispatch-proxy/issues/1). Written in pure Go with no additional dependencies.
