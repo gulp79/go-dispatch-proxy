@@ -1,0 +1,64 @@
+name: Build Dispatch Proxy
+
+on:
+#  push:
+#    branches:
+#      - main
+#      - master
+#  pull_request:
+#    branches:
+#      - main
+#      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Definiamo le piattaforme target per la compilazione incrociata
+        target:
+          - os: windows
+            arch: amd64
+            name: win-x64
+            ext: .exe
+          - os: linux
+            arch: amd64
+            name: linux-x64
+            ext: ""
+          - os: linux
+            arch: arm64
+            name: linux-aarch64
+            ext: ""
+
+    steps:
+      - name: 🔄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up Go 1.21+
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: 🏗️ Build ${{ matrix.target.name }}
+        env:
+          # Variabili di compilazione incrociata
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+        run: |
+          # Definiamo il nome del file finale
+          BUILD_NAME="go-dispatch-proxy-${{ matrix.target.name }}${{ matrix.target.ext }}"
+          
+          # Compilazione con ottimizzazioni:
+          # -s: omette la tabella dei simboli (riduce la dimensione)
+          # -w: omette le informazioni di debug (riduce drasticamente la dimensione)
+          # Il package main deve essere specificato per la build
+          go build -trimpath -ldflags "-s -w" -o ${BUILD_NAME} .
+
+      - name: 📦 Archive and Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-dispatch-proxy-${{ matrix.target.name }}
+          path: go-dispatch-proxy-${{ matrix.target.name }}${{ matrix.target.ext }}
+          retention-days: 7
