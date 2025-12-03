@@ -9,7 +9,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // PipeConnections unisce due connessioni (copia bidirezionale)
@@ -73,11 +72,15 @@ func HandleTunnelConnection(conn net.Conn, dispatcher *Dispatcher) {
 	totalLBs := dispatcher.Count()
 
 	for {
-		// Otteniamo un LB che non abbiamo ancora provato in questo ciclo se possibile
-		// Nota: qui semplifichiamo usando la chiamata standard ma in un'implementazione
-		// avanzata useremmo la logica del bitset per escludere quelli falliti.
-		remoteConn, lb, idx, err := DialBackend(dispatcher, lb.Address) // In tunnel mode, lb.Address è la destinazione? No, la logica originale era confusa.
-		// In tunnel mode originale: lb.Address è la destinazione remota fissa (es. un server SSH)
+		// Otteniamo un LB che non abbiamo ancora provato
+		lb, idx := dispatcher.GetNextFailed(failedBits)
+		if lb == nil {
+			log.Println("[WARN] All load balancers failed for tunnel")
+			return
+		}
+
+		// In tunnel mode, lb.Address è la destinazione remota (es. server SSH)
+		remoteConn, _, _, err := DialBackend(dispatcher, lb.Address)
 		
 		if err == nil {
 			log.Printf("[DEBUG] Tunnelled to %s (LB:%d)", lb.Address, idx)
@@ -91,7 +94,7 @@ func HandleTunnelConnection(conn net.Conn, dispatcher *Dispatcher) {
 		
 		// Se li abbiamo provati tutti
 		allFailed := true
-		for i:=0; i< totalLBs; i++ {
+		for i := 0; i < totalLBs; i++ {
 			if failedBits.Bit(i) == 0 {
 				allFailed = false
 				break
