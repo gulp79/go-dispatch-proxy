@@ -1,4 +1,6 @@
 # Go dispatch proxy
+[![GitHub release](https://img.shields.io/github/v/release/gulp79/go-dispatch-proxy?include_prereleases)](https://github.com/gulp79/go-dispatch-proxy/releases/latest) ![Latest Downloads](https://img.shields.io/github/downloads/gulp79/go-dispatch-proxy/total)
+
 A fork of https://github.com/extremecoders-re/go-dispatch-proxy
 
 🚀 Major Code Refactoring and Robustness Improvements
