@@ -32,7 +32,7 @@ jobs:
             ext: ""
 
     steps:
-      - name: 🔄 Checkout code
+      - name: 📄 Checkout code
         uses: actions/checkout@v4
 
       - name: 🛠️ Set up Go 1.21+
@@ -41,7 +41,7 @@ jobs:
           go-version: '1.21'
           cache: true
 
-      - name: 🏗️ Build ${{ matrix.target.name }}
+      - name: 🗃️ Build ${{ matrix.target.name }}
         env:
           # Variabili di compilazione incrociata
           GOOS: ${{ matrix.target.os }}
@@ -53,12 +53,15 @@ jobs:
           # Compilazione con ottimizzazioni:
           # -s: omette la tabella dei simboli (riduce la dimensione)
           # -w: omette le informazioni di debug (riduce drasticamente la dimensione)
-          # Il package main deve essere specificato per la build
-          go build -trimpath -ldflags "-s -w" -o ${BUILD_NAME} .
+          go build -trimpath -ldflags "-s -w" -o "${BUILD_NAME}" .
+          
+          # Verifica che il file sia stato creato
+          ls -lh "${BUILD_NAME}"
 
-      - name: 📦 Archive and Upload Artifact
+      - name: 📦 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: go-dispatch-proxy-${{ matrix.target.name }}
           path: go-dispatch-proxy-${{ matrix.target.name }}${{ matrix.target.ext }}
           retention-days: 7
+          if-no-files-found: error
