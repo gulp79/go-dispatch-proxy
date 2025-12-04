@@ -1,9 +1,9 @@
 name: Build Go Dispatch GUI
 
 on:
-  push:
-    branches:
-      - GoProxy
+#  push:
+#    branches:
+#      - GoProxy
   workflow_dispatch:
 
 jobs:
@@ -24,12 +24,12 @@ jobs:
       # Build Windows (Gestisce automaticamente MinGW e risorse)
       - name: 🗃️ Build Windows
         run: |
-          fyne-cross windows -arch=amd64 -output go-dispatch-gui-windows.exe .
+          fyne-cross windows -appID=com.gulp79.dispatchproxy -icon=icon.png -arch=amd64 -output go-dispatch-gui-windows.exe .
 
       # Build Linux (Usa immagine docker con librerie X11/GL installate)
       - name: 🗃️ Build Linux
         run: |
-          fyne-cross linux -arch=amd64 -output go-dispatch-gui-linux .
+          fyne-cross linux -appID=com.gulp79.dispatchproxy -arch=amd64 -output go-dispatch-gui-linux .
 
       # Nota: macOS cross-compile da Linux richiede SDK Apple proprietari non distribuibili in docker facilmente.
       # Solitamente si usa un job "runs-on: macos-latest" separato per compilare mac nativamente.
