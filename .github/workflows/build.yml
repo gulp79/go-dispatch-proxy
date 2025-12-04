@@ -1,39 +1,106 @@
-name: Build Go Dispatch GUI
+name: Build Dispatch Proxy AAA
 
 on:
+#  push:
+#    branches:
+#      - main
+#      - master
+#  pull_request:
+#    branches:
+#      - main
+#      - master
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Definiamo le piattaforme target per la compilazione incrociata
+        target:
+          # Windows
+          - os: windows
+            arch: "386"
+            name: win-x86
+            ext: .exe
+          - os: windows
+            arch: amd64
+            name: win-x64
+            ext: .exe
+          - os: windows
+            arch: arm
+            name: win-arm32
+            ext: .exe
+          - os: windows
+            arch: arm64
+            name: win-arm64
+            ext: .exe
+          
+          # Linux
+          - os: linux
+            arch: "386"
+            name: linux-x86
+            ext: ""
+          - os: linux
+            arch: amd64
+            name: linux-x64
+            ext: ""
+          - os: linux
+            arch: arm
+            name: linux-arm32
+            ext: ""
+          - os: linux
+            arch: arm64
+            name: linux-arm64
+            ext: ""
+          
+          # macOS (Darwin)
+          - os: darwin
+            arch: amd64
+            name: macos-x64
+            ext: ""
+          - os: darwin
+            arch: arm64
+            name: macos-arm64
+            ext: ""
+
     steps:
       - name: 📄 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🛠️ Set up Go
+      - name: 🛠️ Set up Go 1.25+
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.5'
+          cache: true
 
-      - name: 📦 Install Fyne Cross
-        run: go install github.com/fyne-io/fyne-cross@latest
-
-      # Build Windows (Gestisce automaticamente MinGW e risorse)
-      - name: 🗃️ Build Windows
+      - name: 🗃️ Build ${{ matrix.target.name }}
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: 0
         run: |
-          fyne-cross windows -arch=amd64 -output go-dispatch-gui-windows.exe .
+          # Nome del file eseguibile
+          BUILD_NAME="go-dispatch-proxy-${{ matrix.target.name }}${{ matrix.target.ext }}"
+          
+          echo "Building for ${{ matrix.target.os }}/${{ matrix.target.arch }}..."
+          
+          # Compilazione con ottimizzazioni
+          go build -trimpath -ldflags "-s -w" -o "${BUILD_NAME}" .
+          
+          # Verifica che il file sia stato creato e mostra le info
+          if [ -f "${BUILD_NAME}" ]; then
+            echo "✅ Build successful!"
+            ls -lh "${BUILD_NAME}"
+          else
+            echo "❌ Build failed - executable not found"
+            exit 1
+          fi
 
-      # Build Linux (Usa immagine docker con librerie X11/GL installate)
-      - name: 🗃️ Build Linux
-        run: |
-          fyne-cross linux -arch=amd64 -output go-dispatch-gui-linux .
-
-      # Nota: macOS cross-compile da Linux richiede SDK Apple proprietari non distribuibili in docker facilmente.
-      # Solitamente si usa un job "runs-on: macos-latest" separato per compilare mac nativamente.
-      # Qui sotto c'è l'approccio per Windows/Linux che sono i più comuni per questo tool.
-
-      - name: 📤 Upload Artifacts
+      - name: 📦 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Dispatch-Proxy-Builds
-          path: fyne-cross/bin/*
+          name: go-dispatch-proxy-${{ matrix.target.name }}
+          path: go-dispatch-proxy-${{ matrix.target.name }}${{ matrix.target.ext }}
+          retention-days: 7
+          if-no-files-found: error
