@@ -1,0 +1,39 @@
+name: Build Go Dispatch GUI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📄 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+
+      - name: 📦 Install Fyne Cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      # Build Windows (Gestisce automaticamente MinGW e risorse)
+      - name: 🗃️ Build Windows
+        run: |
+          fyne-cross windows -arch=amd64 -output go-dispatch-gui-windows.exe .
+
+      # Build Linux (Usa immagine docker con librerie X11/GL installate)
+      - name: 🗃️ Build Linux
+        run: |
+          fyne-cross linux -arch=amd64 -output go-dispatch-gui-linux .
+
+      # Nota: macOS cross-compile da Linux richiede SDK Apple proprietari non distribuibili in docker facilmente.
+      # Solitamente si usa un job "runs-on: macos-latest" separato per compilare mac nativamente.
+      # Qui sotto c'è l'approccio per Windows/Linux che sono i più comuni per questo tool.
+
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dispatch-Proxy-Builds
+          path: fyne-cross/bin/*
