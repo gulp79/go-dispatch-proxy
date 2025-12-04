@@ -18,13 +18,19 @@ jobs:
         with:
           go-version: '1.25.5'
 
+      - name: 🧹 Tidy Dependencies (Fix go.sum)
+        run: |
+          go mod tidy
+          cat go.mod
+          cat go.sum
+
       - name: 📦 Install Fyne Cross
         run: go install github.com/fyne-io/fyne-cross@latest
 
       # Build Windows (Gestisce automaticamente MinGW e risorse)
       - name: 🗃️ Build Windows
         run: |
-          fyne-cross windows -icon=icon.png -arch=amd64 -output go-dispatch-gui-windows.exe .
+          fyne-cross windows -arch=amd64 -output go-dispatch-gui-windows.exe .
 
       # Build Linux (Usa immagine docker con librerie X11/GL installate)
       - name: 🗃️ Build Linux
