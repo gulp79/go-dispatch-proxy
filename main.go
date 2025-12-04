@@ -47,6 +47,7 @@ func main() {
 	}()
 
 	a := app.NewWithID("com.dispatch.proxy")
+	a.Settings().SetTheme(&MatrixTheme{}) // ✓ Applica tema Matrix
 	w := a.NewWindow("Go Dispatch Proxy - Unified")
 	w.Resize(fyne.NewSize(1100, 700))
 
@@ -98,13 +99,23 @@ func main() {
 			}
 			nicRows[nic.ip] = row
 
-			topRow := container.NewBorder(nil, nil, chk, container.NewHBox(valLbl, sl), lbl)
+			// Layout riga selezione con slider più visibile
+			sliderContainer := container.NewHBox(
+				widget.NewLabel("Weight:"),
+				sl,
+				valLbl,
+			)
+			topRow := container.NewBorder(nil, nil, chk, sliderContainer, lbl)
 			nicContainer.Add(topRow)
 		}
 		nicContainer.Refresh()
 	}
 
 	refreshBtn := widget.NewButton("Refresh Interfaces", refreshNICs)
+	
+	// ✓ Status indicator
+	statusLabel := widget.NewLabel("● Proxy: Stopped")
+	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 	
 	startBtn := widget.NewButton("Start Proxy", nil)
 
@@ -114,12 +125,25 @@ func main() {
 	logArea.Wrapping = fyne.TextWrapBreak
 	logArea.Disable()
 	
+	// ✓ Tema Matrix verde fosforescente
+	logArea.OnCursorChanged = func() {} // Mantiene scroll in basso
+	
 	var logMutex sync.Mutex
+	const maxLogLines = 1000 // ✓ Limita righe per performance
+	
 	logger := func(msg string) {
 		logMutex.Lock()
 		defer logMutex.Unlock()
 		
 		if quietCheck.Checked && strings.Contains(msg, "[DEBUG]") { return }
+		
+		// ✓ Limita numero di righe
+		lines := strings.Split(logArea.Text, "\n")
+		if len(lines) > maxLogLines {
+			lines = lines[len(lines)-maxLogLines:]
+			logArea.SetText(strings.Join(lines, "\n"))
+		}
+		
 		logArea.SetText(logArea.Text + msg + "\n")
 		logArea.CursorRow = len(strings.Split(logArea.Text, "\n"))
 		logArea.Refresh()
@@ -127,6 +151,8 @@ func main() {
 
 	// --- Stats Grid ---
 	statsContainer := container.NewVBox()
+	statsScroll := container.NewVScroll(statsContainer)
+	statsScroll.SetMinSize(fyne.NewSize(0, 200)) // ✓ Altezza minima per stats
 	
 	updateStats := func() {
 		nicMutex.RLock()
@@ -165,12 +191,23 @@ func main() {
 			row.PrevSent = stat.BytesSent
 			row.PrevRecv = stat.BytesRecv
 			
+			// ✓ Formattazione migliorata con colori
 			row.UpLbl.SetText(fmt.Sprintf("%.2f", upRate))
 			row.DownLbl.SetText(fmt.Sprintf("%.2f", downRate))
-			row.Graph.AddValue(downRate)
+			row.Graph.AddValue(downRate + upRate) // ✓ Totale traffico
+
+			// ✓ Highlight interfaccia attiva
+			nameLabel := widget.NewLabel(fmt.Sprintf("%s (%s)", row.IP, row.Name))
+			if row.Check.Checked {
+				nameLabel = widget.NewLabelWithStyle(
+					fmt.Sprintf("● %s (%s)", row.IP, row.Name),
+					fyne.TextAlignLeading,
+					fyne.TextStyle{Bold: true},
+				)
+			}
 
 			statsContainer.Add(container.NewGridWithColumns(4,
-				widget.NewLabel(fmt.Sprintf("%s (%s)", row.IP, row.Name)),
+				nameLabel,
 				row.UpLbl,
 				row.DownLbl,
 				container.NewPadded(row.Graph),
@@ -200,6 +237,7 @@ func main() {
 			proxy.Stop()
 			startBtn.SetText("Start Proxy")
 			startBtn.Importance = widget.MediumImportance
+			statusLabel.SetText("● Proxy: Stopped")
 			return
 		}
 
@@ -235,9 +273,11 @@ func main() {
 		if err != nil {
 			logger(fmt.Sprintf("[ERROR] %v", err))
 			dialog.ShowError(err, w)
+			statusLabel.SetText("● Proxy: Error")
 		} else {
 			startBtn.SetText("Stop Proxy")
 			startBtn.Importance = widget.HighImportance
+			statusLabel.SetText("● Proxy: Running")
 		}
 	}
 
@@ -266,6 +306,7 @@ func main() {
 		refreshBtn,
 		container.NewVScroll(nicContainer),
 		layout.NewSpacer(),
+		statusLabel, // ✓ Status prima del bottone
 		startBtn,
 	)
 	
