@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+	// "time" rimossa perché non usata
 )
 
 // LoggerFunc definisce come inviare i log alla GUI
@@ -116,7 +116,6 @@ func (s *ProxyServer) Stop() {
 		s.listener.Close()
 	}
 	s.log("[INFO] Server stopped, waiting for connections to drain...")
-	// Non aspettiamo s.activeConns.Wait() qui per non bloccare la GUI, le goroutine moriranno o finiranno
 }
 
 func (s *ProxyServer) acceptLoop(tunnel bool) {
@@ -147,7 +146,6 @@ func (s *ProxyServer) acceptLoop(tunnel bool) {
 func parseLoadBalancers(args []string, isTunnel bool) []*Backend {
 	list := make([]*Backend, 0, len(args))
 	for _, arg := range args {
-		// formato atteso: IP@Weight o solo IP
 		parts := strings.Split(arg, "@")
 		addrPart := parts[0]
 		ratio := 1
@@ -189,7 +187,7 @@ func getInterfaceFromIP(ip string) string {
 		for _, addr := range addrs {
 			if ipnet, ok := addr.(*net.IPNet); ok {
 				if ipnet.IP.String() == ip {
-					return iface.Name // niente null byte qui, gestito in dialer_linux se serve
+					return iface.Name
 				}
 			}
 		}
@@ -197,7 +195,6 @@ func getInterfaceFromIP(ip string) string {
 	return ""
 }
 
-// Logica di gestione connessioni (Pipe)
 func pipe(local, remote net.Conn) {
 	done := make(chan struct{}, 2)
 	cp := func(dst, src net.Conn) {
