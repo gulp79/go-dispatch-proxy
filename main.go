@@ -114,7 +114,7 @@ func main() {
 	refreshBtn := widget.NewButton("Refresh Interfaces", refreshNICs)
 	
 	// ✓ Status indicator
-	statusLabel := widget.NewLabel("⬤ Proxy: Stopped")
+	statusLabel := widget.NewLabel("Proxy: Stopped")
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 	
 	startBtn := widget.NewButton("Start Proxy", nil)
@@ -353,3 +353,4 @@ func getValidInterfaces() []nicInfo {
 	}
 	return res
 }
+
