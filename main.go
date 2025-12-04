@@ -6,16 +6,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	
-	// USARE ALIAS PER EVITARE CONFLITTO CON "net" STANDARD
 	gonet "github.com/shirou/gopsutil/v3/net"
 )
 
@@ -29,7 +30,6 @@ type NICRow struct {
 	Slider    *widget.Slider
 	ValueLbl  *widget.Label
 	
-	// Stats widgets
 	UpLbl     *widget.Label
 	DownLbl   *widget.Label
 	Graph     *MiniGraph
@@ -38,6 +38,14 @@ type NICRow struct {
 }
 
 func main() {
+	// ✓ Gestione panic per debug
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("PANIC: %v\n", r)
+			time.Sleep(10 * time.Second) // Mantieni finestra aperta
+		}
+	}()
+
 	a := app.NewWithID("com.dispatch.proxy")
 	w := a.NewWindow("Go Dispatch Proxy - Unified")
 	w.Resize(fyne.NewSize(1100, 700))
@@ -51,17 +59,19 @@ func main() {
 	quietCheck := widget.NewCheck("Quiet Mode", nil)
 
 	nicContainer := container.NewVBox()
-	nicRows := make(map[string]*NICRow) // Key: IP address
+	var nicRows = make(map[string]*NICRow)
+	var nicMutex sync.RWMutex // ✓ Protezione concorrenza
 
 	refreshNICs := func() {
+		nicMutex.Lock()
+		defer nicMutex.Unlock()
+		
 		nicContainer.Objects = nil
 		loadedNICs := getValidInterfaces()
 		
-		// Ordina per IP
 		sort.Slice(loadedNICs, func(i, j int) bool { return loadedNICs[i].ip < loadedNICs[j].ip })
 
 		for _, nic := range loadedNICs {
-			// Row UI
 			lbl := widget.NewLabel(fmt.Sprintf("%s (%s)", nic.ip, nic.name))
 			chk := widget.NewCheck("", nil)
 			sl := widget.NewSlider(1, 4)
@@ -78,7 +88,6 @@ func main() {
 
 			sl.OnChanged = func(v float64) { valLbl.SetText(fmt.Sprintf("%d", int(v))) }
 
-			// Stats Elements
 			upL := widget.NewLabel("0.0")
 			downL := widget.NewLabel("0.0")
 			gr := NewMiniGraph(theme.PrimaryColor())
@@ -89,7 +98,6 @@ func main() {
 			}
 			nicRows[nic.ip] = row
 
-			// Layout riga selezione (Checkbox | Label | Slider | Value)
 			topRow := container.NewBorder(nil, nil, chk, container.NewHBox(valLbl, sl), lbl)
 			nicContainer.Add(topRow)
 		}
@@ -98,15 +106,19 @@ func main() {
 
 	refreshBtn := widget.NewButton("Refresh Interfaces", refreshNICs)
 	
-	startBtn := widget.NewButton("Start Proxy", nil) // Definito dopo
+	startBtn := widget.NewButton("Start Proxy", nil)
 
 	// --- Right Panel Components ---
 	logArea := widget.NewMultiLineEntry()
 	logArea.TextStyle = fyne.TextStyle{Monospace: true}
 	logArea.Wrapping = fyne.TextWrapBreak
-	logArea.Disable() // Read only
+	logArea.Disable()
 	
+	var logMutex sync.Mutex
 	logger := func(msg string) {
+		logMutex.Lock()
+		defer logMutex.Unlock()
+		
 		if quietCheck.Checked && strings.Contains(msg, "[DEBUG]") { return }
 		logArea.SetText(logArea.Text + msg + "\n")
 		logArea.CursorRow = len(strings.Split(logArea.Text, "\n"))
@@ -117,8 +129,10 @@ func main() {
 	statsContainer := container.NewVBox()
 	
 	updateStats := func() {
+		nicMutex.RLock()
+		defer nicMutex.RUnlock()
+		
 		statsContainer.Objects = nil
-		// Header
 		statsContainer.Add(container.NewGridWithColumns(4, 
 			widget.NewLabelWithStyle("Interface", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			widget.NewLabelWithStyle("Upload (Mb/s)", fyne.TextAlignTrailing, fyne.TextStyle{Bold: true}),
@@ -126,12 +140,14 @@ func main() {
 			widget.NewLabelWithStyle("Activity", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		))
 		
-		// USARE ALIAS "gonet"
-		counters, _ := gonet.IOCounters(true)
+		counters, err := gonet.IOCounters(true)
+		if err != nil {
+			return // ✓ Gestione errore silente
+		}
+		
 		counterMap := make(map[string]gonet.IOCountersStat)
 		for _, c := range counters { counterMap[c.Name] = c }
 
-		// Ordina le chiavi
 		ips := make([]string, 0, len(nicRows))
 		for ip := range nicRows { ips = append(ips, ip) }
 		sort.Strings(ips)
@@ -141,11 +157,6 @@ func main() {
 			stat, exists := counterMap[row.Name]
 			if !exists { continue }
 
-			// Calcolo delta
-			now := time.Now() // Approssimazione: assumiamo chiamata ogni 1s
-			_ = now
-			
-			// Primo giro ignora
 			var upRate, downRate float64
 			if row.PrevSent > 0 {
 				upRate = float64(stat.BytesSent - row.PrevSent) * 8 / 1_000_000
@@ -156,9 +167,8 @@ func main() {
 			
 			row.UpLbl.SetText(fmt.Sprintf("%.2f", upRate))
 			row.DownLbl.SetText(fmt.Sprintf("%.2f", downRate))
-			row.Graph.AddValue(downRate) // Grafichiamo il download
+			row.Graph.AddValue(downRate)
 
-			// Riga Statistica
 			statsContainer.Add(container.NewGridWithColumns(4,
 				widget.NewLabel(fmt.Sprintf("%s (%s)", row.IP, row.Name)),
 				row.UpLbl,
@@ -169,11 +179,18 @@ func main() {
 		statsContainer.Refresh()
 	}
 
-	// Loop aggiornamento stats
+	// ✓ Loop aggiornamento stats con context
+	stopStats := make(chan struct{})
 	go func() {
-		t := time.NewTicker(1 * time.Second)
-		for range t.C {
-			updateStats()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				updateStats()
+			case <-stopStats:
+				return
+			}
 		}
 	}()
 
@@ -186,7 +203,8 @@ func main() {
 			return
 		}
 
-		// Raccogli configurazione
+		// ✓ Lock per lettura sicura
+		nicMutex.RLock()
 		var selected []string
 		for ip, row := range nicRows {
 			if row.Check.Checked {
@@ -198,28 +216,43 @@ func main() {
 				}
 			}
 		}
+		nicMutex.RUnlock()
 
 		if len(selected) == 0 {
-			dialog := widget.NewModalPopUp(widget.NewLabel("Please select at least one interface"), w.Canvas())
-			dialog.Show()
+			// ✓ Dialog corretto
+			dialog.ShowInformation("Error", "Please select at least one interface", w)
 			return
 		}
 
-		port, _ := strconv.Atoi(portEntry.Text)
+		port, err := strconv.Atoi(portEntry.Text)
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("invalid port: %v", err), w)
+			return
+		}
+		
 		logger("--- Starting Proxy ---")
-		err := proxy.Start(hostEntry.Text, port, tunnelCheck.Checked, selected, logger)
+		err = proxy.Start(hostEntry.Text, port, tunnelCheck.Checked, selected, logger)
 		if err != nil {
 			logger(fmt.Sprintf("[ERROR] %v", err))
+			dialog.ShowError(err, w)
 		} else {
 			startBtn.SetText("Stop Proxy")
-			startBtn.Importance = widget.HighImportance // Diventa rosso/evidenziato
+			startBtn.Importance = widget.HighImportance
 		}
 	}
+
+	// ✓ Cleanup al chiusura
+	w.SetOnClosed(func() {
+		close(stopStats)
+		if proxy.running {
+			proxy.Stop()
+		}
+	})
 
 	// Init
 	refreshNICs()
 
-	// Layout Finale - RIMOSSO Size: 18 che causava errore
+	// Layout Finale
 	leftPanel := container.NewVBox(
 		widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewForm(
@@ -231,17 +264,16 @@ func main() {
 		layout.NewSpacer(),
 		widget.NewLabelWithStyle("Interfaces", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		refreshBtn,
-		container.NewVScroll(nicContainer), // Scrollabile se tante interfacce
+		container.NewVScroll(nicContainer),
 		layout.NewSpacer(),
 		startBtn,
 	)
 	
-	// Right Panel
 	rightPanel := container.NewVSplit(
 		container.NewBorder(widget.NewLabel("Logs"), nil, nil, nil, logArea),
 		container.NewBorder(widget.NewLabel("Real-time Statistics"), nil, nil, nil, container.NewVScroll(statsContainer)),
 	)
-	rightPanel.SetOffset(0.6) // 60% logs, 40% stats
+	rightPanel.SetOffset(0.6)
 
 	content := container.NewBorder(nil, nil, container.NewPadded(leftPanel), nil, rightPanel)
 	w.SetContent(content)
@@ -249,17 +281,22 @@ func main() {
 }
 
 type nicInfo struct { ip, name string }
+
 func getValidInterfaces() []nicInfo {
 	var res []nicInfo
-	ifaces, _ := net.Interfaces()
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return res // ✓ Gestione errore
+	}
+	
 	for _, i := range ifaces {
-		// Filtra loopback o down
 		if strings.Contains(strings.ToLower(i.Name), "loop") { continue }
 		if i.Flags&net.FlagUp == 0 { continue }
 		
-		addrs, _ := i.Addrs()
+		addrs, err := i.Addrs()
+		if err != nil { continue }
+		
 		for _, addr := range addrs {
-			// CORREZIONE IP extraction
 			var ip string
 			switch v := addr.(type) {
 			case *net.IPNet:
@@ -268,7 +305,6 @@ func getValidInterfaces() []nicInfo {
 				ip = v.IP.String()
 			}
 
-			// Semplice check IPv4 non-local
 			if strings.Count(ip, ".") == 3 && !strings.HasPrefix(ip, "127.") {
 				res = append(res, nicInfo{ip, i.Name})
 			}
