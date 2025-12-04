@@ -37,7 +37,7 @@ type NICRow struct {
 }
 
 func main() {
-	a := app.NewWithID("com.dispatch.proxy")
+	a := app.NewWithID("com.gulp79.dispatchproxy")
 	w := a.NewWindow("Go Dispatch Proxy - Unified")
 	w.Resize(fyne.NewSize(1100, 700))
 
@@ -264,4 +264,5 @@ func getValidInterfaces() []nicInfo {
 		}
 	}
 	return res
+
 }
