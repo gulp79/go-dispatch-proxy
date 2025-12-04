@@ -292,8 +292,7 @@ func main() {
 	// Init
 	refreshNICs()
 
-	// Layout Finale
-	leftPanel := container.NewVBox(
+topSettings := container.NewVBox(
 		widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewForm(
 			widget.NewFormItem("Host", hostEntry),
@@ -301,14 +300,26 @@ func main() {
 		),
 		tunnelCheck,
 		quietCheck,
-		layout.NewSpacer(),
-		widget.NewLabelWithStyle("Interfaces", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		refreshBtn,
-		container.NewVScroll(nicContainer),
-		layout.NewSpacer(),
-		statusLabel, // ✓ Status prima del bottone
+		widget.NewSeparator(), // Linea separatrice estetica
+		container.NewHBox(
+			widget.NewLabelWithStyle("Interfaces", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			layout.NewSpacer(),
+			refreshBtn, // Bottone refresh accanto al titolo
+		),
+	)
+
+	// 2. Parte Inferiore: Stato e Bottone Avvio
+	bottomControls := container.NewVBox(
+		widget.NewSeparator(),
+		statusLabel,
 		startBtn,
 	)
+
+	// 3. Parte Centrale: Lista Scrollabile (si espanderà automaticamente)
+	nicScroll := container.NewVScroll(nicContainer)
+	
+	// Usa Border: Top=Settings, Bottom=Controls, Center=List
+	leftPanel := container.NewBorder(topSettings, bottomControls, nil, nil, nicScroll)
 	
 	rightPanel := container.NewVSplit(
 		container.NewBorder(widget.NewLabel("Logs"), nil, nil, nil, logArea),
@@ -327,16 +338,34 @@ func getValidInterfaces() []nicInfo {
 	var res []nicInfo
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return res // ✓ Gestione errore
+		return res
 	}
-	
+
+	// Pattern da escludere (VirtualBox, VMware, VPN, etc.)
+	virtualPatterns := []string{
+		"virtual", "vbox", "vmware", "vethernet", "veth", 
+		"docker", "vpn", "tap", "tun", "host-only",
+	}
+
 	for _, i := range ifaces {
-		if strings.Contains(strings.ToLower(i.Name), "loop") { continue }
-		if i.Flags&net.FlagUp == 0 { continue }
+		lowerName := strings.ToLower(i.Name)
 		
+		// 1. Filtro per nome interfaccia
+		isVirtual := false
+		for _, pattern := range virtualPatterns {
+			if strings.Contains(lowerName, pattern) {
+				isVirtual = true
+				break
+			}
+		}
+		if isVirtual { continue }
+
+		// Deve essere UP e non Loopback
+		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 { continue }
+
 		addrs, err := i.Addrs()
 		if err != nil { continue }
-		
+
 		for _, addr := range addrs {
 			var ip string
 			switch v := addr.(type) {
@@ -346,13 +375,23 @@ func getValidInterfaces() []nicInfo {
 				ip = v.IP.String()
 			}
 
-			if strings.Count(ip, ".") == 3 && !strings.HasPrefix(ip, "127.") {
+			// 2. Filtro IP e Subnet
+			// Deve essere IPv4 (3 punti)
+			// Non deve essere locale (127.*)
+			// Non deve essere Link-Local (169.254.*)
+			// Non deve essere VirtualBox Host-Only default (192.168.56.*)
+			if strings.Count(ip, ".") == 3 &&
+				!strings.HasPrefix(ip, "127.") &&
+				!strings.HasPrefix(ip, "169.254.") &&
+				!strings.HasPrefix(ip, "192.168.56.") {
+				
 				res = append(res, nicInfo{ip, i.Name})
 			}
 		}
 	}
 	return res
 }
+
 
 
 
