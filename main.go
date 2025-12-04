@@ -114,7 +114,7 @@ func main() {
 	refreshBtn := widget.NewButton("Refresh Interfaces", refreshNICs)
 	
 	// ✓ Status indicator
-	statusLabel := widget.NewLabel("🔴 Proxy: Stopped")
+	statusLabel := widget.NewLabel("■ Proxy: Stopped")
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 	
 	startBtn := widget.NewButton("Start Proxy", nil)
@@ -237,7 +237,7 @@ func main() {
 			proxy.Stop()
 			startBtn.SetText("Start Proxy")
 			startBtn.Importance = widget.MediumImportance
-			statusLabel.SetText("🔴 Proxy: Stopped")
+			statusLabel.SetText("■ Proxy: Stopped")
 			return
 		}
 
@@ -273,11 +273,11 @@ func main() {
 		if err != nil {
 			logger(fmt.Sprintf("[ERROR] %v", err))
 			dialog.ShowError(err, w)
-			statusLabel.SetText("⚠️ Proxy: Error")
+			statusLabel.SetText("■ Proxy: Error")
 		} else {
 			startBtn.SetText("Stop Proxy")
 			startBtn.Importance = widget.HighImportance
-			statusLabel.SetText("🟢 Proxy: Running")
+			statusLabel.SetText("▶ Proxy: Running")
 		}
 	}
 
@@ -353,5 +353,6 @@ func getValidInterfaces() []nicInfo {
 	}
 	return res
 }
+
 
 
