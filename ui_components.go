@@ -51,7 +51,7 @@ type graphRenderer struct {
 }
 
 func (r *graphRenderer) MinSize() fyne.Size {
-	return fyne.NewSize(100, 30)
+	return fyne.NewSize(120, 40) // ✓ Grafico più grande e leggibile
 }
 
 func (r *graphRenderer) Layout(s fyne.Size) {}
@@ -85,7 +85,7 @@ func (r *graphRenderer) Objects() []fyne.CanvasObject {
 		y2 := h - (float32(r.m.Data[i+1]) / float32(r.m.MaxVal) * h)
 		
 		line := canvas.NewLine(r.m.LineColor)
-		line.StrokeWidth = 1.5
+		line.StrokeWidth = 2.0 // ✓ Linea più spessa e visibile
 		line.Position1 = fyne.NewPos(x1, y1)
 		line.Position2 = fyne.NewPos(x2, y2)
 		objs = append(objs, line)
