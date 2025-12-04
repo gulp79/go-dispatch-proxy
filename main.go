@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 	"net"
 	"sort"
 	"strconv"
@@ -15,7 +14,9 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/shirou/gopsutil/v3/net"
+	
+	// USARE ALIAS PER EVITARE CONFLITTO CON "net" STANDARD
+	gonet "github.com/shirou/gopsutil/v3/net"
 )
 
 var proxy ProxyServer
@@ -37,7 +38,7 @@ type NICRow struct {
 }
 
 func main() {
-	a := app.NewWithID("com.gulp79.dispatchproxy")
+	a := app.NewWithID("com.dispatch.proxy")
 	w := a.NewWindow("Go Dispatch Proxy - Unified")
 	w.Resize(fyne.NewSize(1100, 700))
 
@@ -125,8 +126,9 @@ func main() {
 			widget.NewLabelWithStyle("Activity", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		))
 		
-		counters, _ := net.IOCounters(true)
-		counterMap := make(map[string]net.IOCountersStat)
+		// USARE ALIAS "gonet"
+		counters, _ := gonet.IOCounters(true)
+		counterMap := make(map[string]gonet.IOCountersStat)
 		for _, c := range counters { counterMap[c.Name] = c }
 
 		// Ordina le chiavi
@@ -217,9 +219,9 @@ func main() {
 	// Init
 	refreshNICs()
 
-	// Layout Finale
+	// Layout Finale - RIMOSSO Size: 18 che causava errore
 	leftPanel := container.NewVBox(
-		widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true, Size: 18}),
+		widget.NewLabelWithStyle("Settings", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		widget.NewForm(
 			widget.NewFormItem("Host", hostEntry),
 			widget.NewFormItem("Port", portEntry),
@@ -251,12 +253,21 @@ func getValidInterfaces() []nicInfo {
 	var res []nicInfo
 	ifaces, _ := net.Interfaces()
 	for _, i := range ifaces {
-		// Filtra loopback o down (basic logic, gopsutil aiuta)
+		// Filtra loopback o down
 		if strings.Contains(strings.ToLower(i.Name), "loop") { continue }
+		if i.Flags&net.FlagUp == 0 { continue }
 		
 		addrs, _ := i.Addrs()
 		for _, addr := range addrs {
-			ip := addr.Addr
+			// CORREZIONE IP extraction
+			var ip string
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP.String()
+			case *net.IPAddr:
+				ip = v.IP.String()
+			}
+
 			// Semplice check IPv4 non-local
 			if strings.Count(ip, ".") == 3 && !strings.HasPrefix(ip, "127.") {
 				res = append(res, nicInfo{ip, i.Name})
@@ -264,5 +275,4 @@ func getValidInterfaces() []nicInfo {
 		}
 	}
 	return res
-
 }
