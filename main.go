@@ -424,3 +424,4 @@ func getValidInterfaces() []nicInfo {
 	}
 	return res
 }
+
